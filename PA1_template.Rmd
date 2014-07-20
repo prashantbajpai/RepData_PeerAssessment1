@@ -1,20 +1,152 @@
-# Reproducible Research: Peer Assessment 1
+---
+title: "Reproducible Research Peer Assessment 1"
+author: "Prashant Bajpai"
+date: "Friday, July 18, 2014"
+output: 
+html_document:
+toc: true        
+theme: cerulean
+---
+
+## Loading and Preprocessing
+
+Unzip the activity.zip file and load it into R. Remove rows having NA's
+
+```{r}
+setwd("D:/R projects//Learning/activity monitoring/")
+mydata <- read.csv("activity.csv")
+dat <- mydata[complete.cases(mydata),]
+```
+
+## Mean total number of steps taken per day
 
 
-## Loading and preprocessing the data
+```{r, echo=TRUE}
+library(knitr)
+library(reshape2)
+library(ggplot2)
+library(dplyr)
+library(rCharts)
+
+dt <- tbl_df(dat)
+res <- dt %>% 
+        group_by(date) %>%
+        summarise(total.steps = sum(steps), mean = mean(steps), median = median(steps))
+
+plot1<- ggplot(res, aes(x= res$date, y = total.steps)) + geom_histogram(fill = "#FF6666", color = "black", stat = "identity") + xlab("date") + scale_x_discrete(breaks = res$date[seq(1, length(res$date), by = 3)]) +  labs(title = "Mean steps per day after removing NA's") + theme(plot.title = element_text(lineheight = 0.8, face = "bold"))
+```
+```{r, fig.width=15}
+plot1
+```
+
+Here is the table of containing mean and median of steps taken per day
+```{r, results='asis'}
+knitr::kable(res)
+```
+
+## Average daily activity pattern
 
 
+```{r, fig.width=15}
+dt$interval <- as.factor(dt$interval)
+res2 <- dt %>%
+        group_by(interval) %>%        
+        summarise(average.steps = mean(steps))        
 
-## What is mean total number of steps taken per day?
+plot2 <- ggplot(res2, aes(x = interval, y = average.steps)) + geom_line(aes(group =1)) + scale_x_discrete(breaks = res2$interval[seq(1, length(res2$interval), by = 10)]) + labs(title = "Daily activity pattern after removing NA's") + theme(plot.title = element_text(lineheight = 0.8, face = "bold"))
+plot2
 
+maxsteps <- res2[which(res2$average.steps == max(res2$average.steps)),]$interval
+```
 
-
-## What is the average daily activity pattern?
-
-
+The maximum number of steps averaged across all days were taken on **`r maxsteps`** interval
 
 ## Imputing missing values
 
 
+```{r}
+# Calculate missing values in mydata
+missingvalues <- length(which(is.na(mydata$steps)))
+```
 
-## Are there differences in activity patterns between weekdays and weekends?
+The total number of rows with missing values are **`r missingvalues`**
+
+Here I have replaced the missing values with average of total no. of steps for each interval  
+
+```{r, fig.width=15}
+compiled <- merge(mydata, res2, by = 'interval') 
+
+for(i in 1:nrow(compiled)){
+        if(is.na(compiled[i,2])){
+        compiled[i,2] <- compiled[i,4]
+        }
+}
+
+#calculate total number of steps taken daily along with mean and median
+res3 <- compiled %>%
+        group_by(date) %>%
+        summarise(total.steps = sum(steps), mean = mean(steps), median = median(steps))
+
+
+ggplot(res3, aes(x= date, y = total.steps)) + geom_histogram(fill = "#FF6666", color = "black", stat = "identity") + xlab("date") + scale_x_discrete(breaks = res$date[seq(1, length(res$date), by = 3)])
+
+
+
+```
+
+To see the effect of imputing NA's on lets first check the number of entries in tables before and after it. First dataset has **`r nrow(res)`** rows and after imputing we get **`r nrow(res3)`** rows. We lost information on some days by removing NA's. Apart from that I don't think it made a large difference.
+Lets also check on the daily activity pattern with and without NA's removal
+
+```{r, fig.width=15}
+res4 <- compiled %>%
+        group_by(interval) %>%        
+        summarise(average.steps = mean(steps))    
+plot3 <- ggplot(res4, aes(x = interval, y = average.steps)) + geom_line(aes(group =1)) + scale_x_discrete(breaks = res4$interval[seq(1, length(res4$interval), by = 10)]) + labs(title = "Daily activity pattern after imputing NA's") + theme(plot.title = element_text(lineheight = 0.8, face = "bold")) 
+plot2
+plot3
+```
+
+## Activity patterns between weekdays and weekends
+
+
+Lets start with the dataframe in which NA's have been replaced by their subsequent means
+
+```{r}
+#Add a factor column of weekdays and weekend
+compiled$date <- weekdays(as.Date(compiled$date))
+myswitch <- function(x){
+        switch(x, "Sunday" = "Weekend", "Monday" = "Weekday", "Tuesday" = "Weekday",
+               "Wednesday" = "Weekday", "Thursday" = "Weekday", "Friday" = "Weekday",
+               "Saturday" = "Weekend")
+        }
+for(i in 1:length(compiled$date)){
+     compiled$date[i] <- myswitch(compiled$date[i])
+}
+compiled$date <- as.factor(compiled$date)
+compiled$interval <- as.factor(compiled$interval)
+compiled[,4] <- NULL
+
+#splitting the data on th basis of date
+mylist <- split(compiled, compiled$date)
+
+#calculating mean for each interval
+weekday <- mylist[[1]] %>%
+        group_by(interval) %>%
+        summarise(mean.steps = mean(steps)) %>%
+        mutate(days = "Weekday")
+
+weekend <- mylist[[2]] %>%
+        group_by(interval) %>%
+        summarise(mean.steps = mean(steps)) %>%
+        mutate(days = "Weekend")
+
+res5 <- rbind(weekday, weekend)
+```
+Here is the final figure separeted by weekday and weekend
+```{r, fig.width=15}
+
+ggplot(res5, aes(x = interval, y = mean.steps)) + 
+        geom_line(aes(group =1), colour="blue") + 
+        facet_grid(days~.) + 
+        scale_x_discrete(breaks = res5$interval[seq(1, 288, by = 10)]) 
+```
